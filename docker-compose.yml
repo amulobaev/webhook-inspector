@@ -1,0 +1,31 @@
+services:
+  webhook-inspector:
+    build: .
+    container_name: webhook-inspector
+    restart: unless-stopped
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+
+      # ── HTTP → HTTPS redirect ──────────────────────────────────────────
+      - "traefik.http.routers.webhook-http.rule=Host(`webhook.yourdomain.com`)"
+      - "traefik.http.routers.webhook-http.entrypoints=web"
+      - "traefik.http.routers.webhook-http.middlewares=https-redirect"
+
+      # ── HTTPS router ───────────────────────────────────────────────────
+      - "traefik.http.routers.webhook-https.rule=Host(`webhook.yourdomain.com`)"
+      - "traefik.http.routers.webhook-https.entrypoints=websecure"
+      - "traefik.http.routers.webhook-https.tls=true"
+      - "traefik.http.routers.webhook-https.tls.certresolver=letsencrypt"
+
+      # ── Service ────────────────────────────────────────────────────────
+      - "traefik.http.services.webhook-inspector.loadbalancer.server.port=8000"
+
+      # ── Middlewares ────────────────────────────────────────────────────
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+
+networks:
+  traefik-public:
+    external: true

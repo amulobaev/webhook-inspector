@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webhook Inspector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // Apply theme before paint to avoid flash
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  </script>
+</head>
+<body>
+
+<header>
+  <div class="logo">WEBHOOK<span>.</span>INSPECTOR</div>
+  <span class="badge">LIVE</span>
+  <div class="ws-status">
+    <div class="ws-dot" id="ws-dot"></div>
+    <span id="ws-label">connecting…</span>
+  </div>
+  <button class="btn-theme" id="btn-theme" onclick="toggleTheme()" title="Toggle theme"></button>
+  <button class="btn-clear" onclick="clearAll()">✕ Clear</button>
+</header>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    Requests
+    <span id="req-count">0</span>
+  </div>
+  <div id="request-list">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">⚡</div>
+      <p>Waiting for requests…</p>
+      <div class="endpoint-hint" id="endpoint-display">
+        POST /hook/your-path
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="detail" id="detail">
+  <div class="no-selection">
+    <div class="no-selection-icon">◈</div>
+    Select a request to inspect
+  </div>
+</div>
+
+<script>
+  let requests = [];
+  let selectedId = null;
+  let ws;
+
+  // ── Theme ──────────────────────────────────────────────────────────────
+
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.getElementById('btn-theme').textContent = '☀️';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      document.getElementById('btn-theme').textContent = '🌙';
+    }
+    localStorage.setItem('theme', theme);
+  }
+
+  function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
+  }
+
+  // Init theme button icon on load
+  applyTheme(localStorage.getItem('theme') || 'light');
+
+  // ── WebSocket ──────────────────────────────────────────────────────────
+
+  function initWS() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      document.getElementById('ws-dot').classList.add('connected');
+      document.getElementById('ws-label').textContent = 'connected';
+    };
+    ws.onclose = () => {
+      document.getElementById('ws-dot').classList.remove('connected');
+      document.getElementById('ws-label').textContent = 'reconnecting…';
+      setTimeout(initWS, 2000);
+    };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'history') {
+        requests = msg.requests;
+        renderList();
+      } else if (msg.type === 'new_request') {
+        requests.unshift(msg.request);
+        if (requests.length > 100) requests.pop();
+        renderList(msg.request.id);
+        if (!selectedId) selectRequest(msg.request.id);
+      }
+    };
+  }
+
+  // ── List ───────────────────────────────────────────────────────────────
+
+  function renderList(flashId) {
+    const list = document.getElementById('request-list');
+
+    if (requests.length === 0) {
+      list.innerHTML = '';
+      list.appendChild(document.getElementById('empty-state'));
+      document.getElementById('req-count').textContent = '0';
+      return;
+    }
+
+    document.getElementById('req-count').textContent = requests.length;
+
+    list.innerHTML = requests.map(r => `
+      <div class="req-item ${r.id === selectedId ? 'active' : ''} ${r.id === flashId ? 'new-flash' : ''}"
+           onclick="selectRequest('${r.id}')" data-id="${r.id}">
+        <span class="method-badge ${r.method}">${r.method}</span>
+        <span class="req-path">${escHtml(r.path)}</span>
+        <span class="req-time">${formatTime(r.timestamp)}</span>
+        <span class="req-client">${escHtml(r.client)}</span>
+      </div>
+    `).join('');
+  }
+
+  // ── Detail ─────────────────────────────────────────────────────────────
+
+  function selectRequest(id) {
+    selectedId = id;
+    const r = requests.find(x => x.id === id);
+    if (!r) return;
+
+    document.querySelectorAll('.req-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === id);
+    });
+
+    const queryRows = Object.entries(r.query).length
+      ? Object.entries(r.query).map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join('')
+      : '<tr><td colspan="2" style="color:var(--muted)">—</td></tr>';
+
+    const headerRows = Object.entries(r.headers)
+      .map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join('');
+
+    const bodyContent = r.body_parsed
+      ? `<pre class="code">${escHtml(JSON.stringify(r.body_parsed, null, 2))}</pre>`
+      : r.body_raw
+        ? `<pre class="code">${escHtml(r.body_raw)}</pre>`
+        : `<span style="color:var(--muted);font-size:13px">— empty body —</span>`;
+
+    document.getElementById('detail').innerHTML = `
+      <div class="section">
+        <div class="section-title">Overview</div>
+        <div class="section-body">
+          <div class="meta-grid">
+            <span class="meta-key">Method</span>
+            <span class="meta-val"><span class="method-badge ${r.method}">${r.method}</span></span>
+            <span class="meta-key">Path</span>
+            <span class="meta-val">${escHtml(r.path)}</span>
+            <span class="meta-key">Time (UTC)</span>
+            <span class="meta-val">${r.timestamp}</span>
+            <span class="meta-key">Client IP</span>
+            <span class="meta-val">${escHtml(r.client)}</span>
+            <span class="meta-key">Body type</span>
+            <span class="meta-val">${r.body_parsed ? '<span class="tag">JSON</span>' : (r.body_raw ? '<span class="tag">raw</span>' : '—')}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          Body
+          <button class="copy-btn" onclick="copyText(${escAttr(r.body_raw)})">Copy</button>
+        </div>
+        <div class="section-body">${bodyContent}</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Query Params</div>
+        <div class="section-body" style="padding:0">
+          <table class="kv">${queryRows}</table>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Headers</div>
+        <div class="section-body" style="padding:0">
+          <table class="kv">${headerRows}</table>
+        </div>
+      </div>
+    `;
+  }
+
+  function clearAll() {
+    requests = [];
+    selectedId = null;
+    renderList();
+    document.getElementById('detail').innerHTML = `
+      <div class="no-selection">
+        <div class="no-selection-icon">◈</div>
+        Select a request to inspect
+      </div>`;
+  }
+
+  // ── Utils ──────────────────────────────────────────────────────────────
+
+  function formatTime(iso) {
+    return new Date(iso).toLocaleTimeString('en-GB', { hour12: false });
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function escAttr(s) {
+    return JSON.stringify(String(s ?? ''));
+  }
+
+  function copyText(text) {
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  document.getElementById('endpoint-display').textContent =
+    `${location.origin}/hook/<your-path>`;
+
+  initWS();
+</script>
+</body>
+</html>
