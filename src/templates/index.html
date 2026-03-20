@@ -8,7 +8,6 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <script>
-    // Apply theme before paint to avoid flash
     const saved = localStorage.getItem('theme');
     if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
   </script>
@@ -26,26 +25,26 @@
   <button class="btn-clear" onclick="clearAll()">✕ Clear</button>
 </header>
 
-<div class="sidebar">
-  <div class="sidebar-header">
-    Requests
-    <span id="req-count">0</span>
-  </div>
-  <div id="request-list">
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon">⚡</div>
-      <p>Waiting for requests…</p>
-      <div class="endpoint-hint" id="endpoint-display">
-        POST /hook/your-path
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      Requests
+      <span id="req-count">0</span>
+    </div>
+    <div id="request-list">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">⚡</div>
+        <p>Waiting for requests…</p>
+        <div class="endpoint-hint" id="endpoint-display">POST /hook/your-path</div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="detail" id="detail">
-  <div class="no-selection">
-    <div class="no-selection-icon">◈</div>
-    Select a request to inspect
+  <div class="detail" id="detail">
+    <div class="no-selection">
+      <div class="no-selection-icon">◈</div>
+      Select a request to inspect
+    </div>
   </div>
 </div>
 
@@ -53,8 +52,6 @@
   let requests = [];
   let selectedId = null;
   let ws;
-
-  // ── Theme ──────────────────────────────────────────────────────────────
 
   function applyTheme(theme) {
     if (theme === 'dark') {
@@ -72,15 +69,11 @@
     applyTheme(isDark ? 'light' : 'dark');
   }
 
-  // Init theme button icon on load
   applyTheme(localStorage.getItem('theme') || 'light');
-
-  // ── WebSocket ──────────────────────────────────────────────────────────
 
   function initWS() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws`);
-
     ws.onopen = () => {
       document.getElementById('ws-dot').classList.add('connected');
       document.getElementById('ws-label').textContent = 'connected';
@@ -104,20 +97,15 @@
     };
   }
 
-  // ── List ───────────────────────────────────────────────────────────────
-
   function renderList(flashId) {
     const list = document.getElementById('request-list');
-
     if (requests.length === 0) {
       list.innerHTML = '';
       list.appendChild(document.getElementById('empty-state'));
       document.getElementById('req-count').textContent = '0';
       return;
     }
-
     document.getElementById('req-count').textContent = requests.length;
-
     list.innerHTML = requests.map(r => `
       <div class="req-item ${r.id === selectedId ? 'active' : ''} ${r.id === flashId ? 'new-flash' : ''}"
            onclick="selectRequest('${r.id}')" data-id="${r.id}">
@@ -129,30 +117,23 @@
     `).join('');
   }
 
-  // ── Detail ─────────────────────────────────────────────────────────────
-
   function selectRequest(id) {
     selectedId = id;
     const r = requests.find(x => x.id === id);
     if (!r) return;
-
     document.querySelectorAll('.req-item').forEach(el => {
       el.classList.toggle('active', el.dataset.id === id);
     });
-
     const queryRows = Object.entries(r.query).length
       ? Object.entries(r.query).map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join('')
       : '<tr><td colspan="2" style="color:var(--muted)">—</td></tr>';
-
     const headerRows = Object.entries(r.headers)
       .map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join('');
-
     const bodyContent = r.body_parsed
       ? `<pre class="code">${escHtml(JSON.stringify(r.body_parsed, null, 2))}</pre>`
       : r.body_raw
         ? `<pre class="code">${escHtml(r.body_raw)}</pre>`
         : `<span style="color:var(--muted);font-size:13px">— empty body —</span>`;
-
     document.getElementById('detail').innerHTML = `
       <div class="section">
         <div class="section-title">Overview</div>
@@ -171,7 +152,6 @@
           </div>
         </div>
       </div>
-
       <div class="section">
         <div class="section-title">
           Body
@@ -179,19 +159,13 @@
         </div>
         <div class="section-body">${bodyContent}</div>
       </div>
-
       <div class="section">
         <div class="section-title">Query Params</div>
-        <div class="section-body" style="padding:0">
-          <table class="kv">${queryRows}</table>
-        </div>
+        <div class="section-body" style="padding:0"><table class="kv">${queryRows}</table></div>
       </div>
-
       <div class="section">
         <div class="section-title">Headers</div>
-        <div class="section-body" style="padding:0">
-          <table class="kv">${headerRows}</table>
-        </div>
+        <div class="section-body" style="padding:0"><table class="kv">${headerRows}</table></div>
       </div>
     `;
   }
@@ -206,8 +180,6 @@
         Select a request to inspect
       </div>`;
   }
-
-  // ── Utils ──────────────────────────────────────────────────────────────
 
   function formatTime(iso) {
     return new Date(iso).toLocaleTimeString('en-GB', { hour12: false });
