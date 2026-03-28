@@ -1,9 +1,9 @@
 # Webhook Inspector
 
-Real-time инструмент для отладки HTTP-запросов. Принимает **любые запросы** на `/hook/<path>`
-и показывает их в браузере через WebSocket без перезагрузки страницы.
+Real-time tool for debugging HTTP requests. Accepts **any requests** on `/hook/<path>`
+and displays them in the browser via WebSocket without page reload.
 
-## Структура
+## Structure
 
 ```
 webhook-inspector/
@@ -19,30 +19,30 @@ webhook-inspector/
 └── .env
 ```
 
-## Быстрый запуск (без Traefik)
+## Quick Start (without Traefik)
 
 ```bash
 docker build -t webhook-inspector .
 docker run -p 8000:8000 webhook-inspector
-# Открой http://localhost:8000
+# Open http://localhost:8000
 ```
 
-## Деплой с Traefik
+## Deploy with Traefik
 
-### 1. Создай внешнюю сеть (если нет)
+### 1. Create external network (if not exists)
 
 ```bash
 docker network create traefik-public
 ```
 
-### 2. Задай домен и запусти
+### 2. Set domain and run
 
 ```bash
 echo "DOMAIN=webhook.yourdomain.com" > .env
 docker compose up -d --build
 ```
 
-### 3. Проверь
+### 3. Verify
 
 ```bash
 curl https://webhook.yourdomain.com/hook/test \
@@ -51,21 +51,21 @@ curl https://webhook.yourdomain.com/hook/test \
   -d '{"event": "test", "value": 42}'
 ```
 
-Запрос появится в браузере мгновенно.
+The request will appear in the browser instantly.
 
-## Предпосылки для Traefik
+## Traefik Prerequisites
 
-`docker-compose.yml` предполагает:
-- entrypoints с именами `web` (80) и `websecure` (443)
-- certresolver с именем `letsencrypt`
-- `--providers.docker=true` и `--providers.docker.exposedByDefault=false`
+`docker-compose.yml` assumes:
+- entrypoints named `web` (80) and `websecure` (443)
+- certresolver named `letsencrypt`
+- `--providers.docker=true` and `--providers.docker.exposedByDefault=false`
 
 ## API
 
 | Method | Path           | Description                              |
 |--------|----------------|------------------------------------------|
-| ANY    | `/hook/{path}` | Принимает любой запрос, сохраняет в памяти |
-| GET    | `/`            | UI инспектора                            |
-| WS     | `/ws`          | WebSocket для live-обновлений            |
+| ANY    | `/hook/{path}` | Accepts any request, stores in memory    |
+| GET    | `/`            | Inspector UI                             |
+| WS     | `/ws`          | WebSocket for live updates               |
 
-> Хранит последние 100 запросов в памяти (сбрасывается при рестарте).
+> Stores the last 100 requests in memory (cleared on restart).
